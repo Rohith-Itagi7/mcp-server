@@ -305,9 +305,7 @@ def test_non_admin_persona_cannot_manage_runtimes():
 
 def test_inspect_crd_not_found(mock_k8s_apis):
     api = mock_k8s_apis["apiextensions"]
-    api.read_custom_resource_definition.side_effect = ApiException(
-        status=404, reason="Not Found"
-    )
+    api.read_custom_resource_definition.side_effect = ApiException(status=404, reason="Not Found")
 
     result = inspect_crd("missing.trainer.kubeflow.org")
 
