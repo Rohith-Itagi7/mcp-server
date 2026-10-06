@@ -366,6 +366,39 @@ def _controller_pod(namespace: str) -> MagicMock:
     return pod
 
 
+def test_inspect_controller_events_response(mock_k8s_apis):
+    core = mock_k8s_apis["core_v1"]
+    core.list_namespaced_pod.return_value = MagicMock(items=[_controller_pod("kubeflow-system")])
+    event = MagicMock()
+    event.type = "Warning"
+    event.reason = "Failed"
+    event.message = "Training job failed"
+    event.count = 2
+    event.first_timestamp = None
+    event.last_timestamp = None
+    core.list_namespaced_event.return_value = MagicMock(items=[event])
+    result = inspect_controller(view="events")
+    data = verify_tool_success(result)
+    assert data["pod"] == "trainer-controller-manager-0"
+    assert data["namespace"] == "kubeflow-system"
+    assert data["events"] == [
+        {
+            "type": "Warning",
+            "reason": "Failed",
+            "message": "Training job failed",
+            "count": 2,
+            "first_seen": None,
+            "last_seen": None,
+        }
+    ]
+    assert data["count"] == 1
+    core.list_namespaced_event.assert_called_once_with(
+        namespace="kubeflow-system",
+        field_selector="involvedObject.name=trainer-controller-manager-0",
+        _request_timeout=mcp_utils.K8S_TIMEOUT,
+    )
+
+
 def test_inspect_controller_rejects_namespace_outside_policy(mock_k8s_apis, tmp_policy_file):
     tmp_policy_file({"policy": {"namespaces": ["team-a"]}})
 
