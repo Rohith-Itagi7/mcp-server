@@ -367,9 +367,7 @@ def _controller_pod(namespace: str) -> MagicMock:
     return pod
 
 
-def test_inspect_controller_events_response(
-    mock_k8s_apis, scan_default_namespaces
-):
+def test_inspect_controller_events_response(mock_k8s_apis, scan_default_namespaces):
     core = mock_k8s_apis["core_v1"]
     core.list_namespaced_pod.return_value = MagicMock(items=[_controller_pod("kubeflow-system")])
     event = MagicMock()
