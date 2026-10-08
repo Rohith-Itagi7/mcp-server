@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -366,7 +367,9 @@ def _controller_pod(namespace: str) -> MagicMock:
     return pod
 
 
-def test_inspect_controller_events_response(mock_k8s_apis):
+def test_inspect_controller_events_response(
+    mock_k8s_apis, scan_default_namespaces
+):
     core = mock_k8s_apis["core_v1"]
     core.list_namespaced_pod.return_value = MagicMock(items=[_controller_pod("kubeflow-system")])
     event = MagicMock()
@@ -374,7 +377,7 @@ def test_inspect_controller_events_response(mock_k8s_apis):
     event.reason = "Failed"
     event.message = "Training job failed"
     event.count = 2
-    event.first_timestamp = None
+    event.first_timestamp = datetime(2024, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
     event.last_timestamp = None
     core.list_namespaced_event.return_value = MagicMock(items=[event])
     result = inspect_controller(view="events")
@@ -387,7 +390,7 @@ def test_inspect_controller_events_response(mock_k8s_apis):
             "reason": "Failed",
             "message": "Training job failed",
             "count": 2,
-            "first_seen": None,
+            "first_seen": "2024-01-02T03:04:05+00:00",
             "last_seen": None,
         }
     ]
@@ -438,4 +441,3 @@ def test_inspect_controller_auto_discovery_is_exempt_from_policy(
 # TODO(test): test inspect_crd(name) — returns CRD schema and conditions
 # TODO(test): test inspect_crd — invalid CRD name
 # TODO(test): test inspect_controller(view="logs") — returns controller logs
-# TODO(test): test inspect_controller(view="events") — returns controller events
