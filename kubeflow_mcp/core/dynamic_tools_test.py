@@ -51,11 +51,13 @@ def admin_tool(name: str) -> dict:
 def _registry():
     _calls.clear()
     _admin_calls.clear()
+    dynamic_tools._EmbeddingCache._shared_model = None
     dynamic_tools.init_dynamic_tools([probe_tool, failing_tool], {})
     yield
     dynamic_tools.TOOL_REGISTRY.clear()
     dynamic_tools.TOOL_HIERARCHY.clear()
     dynamic_tools._embedding_cache.reset()
+    dynamic_tools._EmbeddingCache._shared_model = None
 
 
 @pytest.fixture
@@ -317,6 +319,26 @@ def test_semantic_search_is_isolated_between_registries(monkeypatch):
     assert [tool["name"] for tool in results_b] == ["beta_tool"]
     assert registry_a._embedding_cache is not registry_b._embedding_cache
     assert registry_a._embedding_cache._embeddings is not registry_b._embedding_cache._embeddings
+
+
+def test_embedding_model_is_shared_between_registries(monkeypatch):
+    fake_module = types.SimpleNamespace(SentenceTransformer=lambda _name: _FakeEmbeddingModel())
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
+    monkeypatch.setitem(sys.modules, "numpy", _FAKE_NUMPY)
+    monkeypatch.setattr(dynamic_tools._EmbeddingCache, "_shared_model", None)
+
+    registry_a = dynamic_tools.DynamicToolRegistry([alpha_tool], {})
+    registry_b = dynamic_tools.DynamicToolRegistry([beta_tool], {})
+
+    registry_a.find_tools("alpha")
+    registry_b.find_tools("beta")
+
+    assert registry_a._embedding_cache._model is registry_b._embedding_cache._model
+    assert registry_a._embedding_cache._embeddings is not registry_b._embedding_cache._embeddings
+    assert "alpha_tool" in registry_a._embedding_cache._embeddings
+    assert "beta_tool" in registry_b._embedding_cache._embeddings
+    assert "beta_tool" not in registry_a._embedding_cache._embeddings
+    assert "alpha_tool" not in registry_b._embedding_cache._embeddings
 
 
 def test_keyword_fallback_is_isolated_between_registries(monkeypatch):

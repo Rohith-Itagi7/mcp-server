@@ -205,6 +205,9 @@ def _execute_tool(
 class _EmbeddingCache:
     """Lazy-loaded embedding cache for semantic search."""
 
+    _shared_model = None
+    _shared_model_lock = threading.Lock()
+
     def __init__(self, tool_registry: dict[str, dict[str, Any]]):
         self._tool_registry = tool_registry
         self._embeddings: dict[str, list[float]] | None = None
@@ -246,7 +249,10 @@ class _EmbeddingCache:
             return self._mark_unavailable()
 
         try:
-            self._model = SentenceTransformer("all-MiniLM-L6-v2")
+            with _EmbeddingCache._shared_model_lock:
+                if _EmbeddingCache._shared_model is None:
+                    _EmbeddingCache._shared_model = SentenceTransformer("all-MiniLM-L6-v2")
+            self._model = _EmbeddingCache._shared_model
             descriptions = [
                 f"{info['description']}. Category: {info['category']}. {info['full_doc'][:200]}"
                 for info in self._tool_registry.values()
