@@ -449,21 +449,67 @@ class DynamicToolRegistry:
         )
 
     def list_tools(self, prefix: str = "") -> dict[str, Any]:
-        """List this registry's tools by category or prefix."""
+        """List this registry's available tools by category or prefix.
+
+        Start with no prefix to see categories, then drill down.
+
+        Args:
+            prefix: Filter. Examples:
+                - "" → list all categories with tool counts
+                - "planning" → list planning tools
+                - "training" → list training tools
+
+        Returns:
+            Categories and matching tools in this registry.
+        """
         return _list_tools(self.tool_registry, self.tool_hierarchy, prefix)
 
     def describe_tools(self, tool_names: list[str]) -> dict[str, Any]:
-        """Describe tools from this registry."""
+        """Get detailed schema for specific tools in this registry.
+
+        Call after list_tools() to get parameter information before executing.
+
+        Args:
+            tool_names: List of tool names to describe (max 5 at a time).
+
+        Returns:
+            Tool schemas with parameter types and defaults.
+        """
         return _describe_tools(self.tool_registry, tool_names)
 
     def execute_tool(
         self, tool_name: str, arguments: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Execute a tool from this registry by name."""
+        """Execute a discovered tool from this registry by name.
+
+        Call after list_tools() and describe_tools() to run the actual tool.
+
+        Args:
+            tool_name: Name of the tool to execute.
+            arguments: Tool arguments as key-value pairs.
+
+        Returns:
+            Tool execution result.
+        """
         return _execute_tool(self.tool_registry, tool_name, arguments)
 
     def find_tools(self, query: str, top_k: int = 5) -> dict[str, Any]:
-        """Find tools in this registry using semantic or keyword search."""
+        """Find relevant tools in this registry using semantic or keyword search.
+
+        Describe what you want to accomplish in natural language.
+
+        Args:
+            query: Natural language description. Examples:
+                - "all" → list every available tool in this registry
+                - "check GPU availability in the cluster"
+                - "fine-tune a language model"
+                - "view logs from a training job"
+                - "delete a failed job"
+            top_k: Number of results (default 5, ignored when query="all").
+
+        Returns:
+            Matching tools ranked by relevance within this registry.
+        """
         return _find_tools(self.tool_registry, self._embedding_cache, query, top_k)
 
     def _keyword_search(self, query: str, top_k: int = 5) -> dict[str, Any]:
