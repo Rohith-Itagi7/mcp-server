@@ -22,6 +22,7 @@ import pytest
 from tests.common import TestCase
 
 from kubeflow_mcp.core.policy import (
+    PolicyFileError,
     _expand_category,
     _load_policy_file,
     _matches_pattern,
@@ -222,6 +223,63 @@ def test_valid_policy_file_is_loaded(tmp_policy_file):
     policy = {"policy": {"read_only": True, "namespaces": ["team-a"]}}
     tmp_policy_file(policy)
     assert _load_policy_file() == policy
+
+
+@pytest.mark.parametrize("document", ["invalid", ["invalid", "document"]])
+def test_non_mapping_policy_document_fails_closed(tmp_policy_file, document):
+    tmp_policy_file(document)
+
+    with pytest.raises(PolicyFileError, match="top level must be a mapping"):
+        _load_policy_file()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("allow", "fine_tune"),
+        ("allow", {"tool": "fine_tune"}),
+        ("allow", ["fine_tune", 1]),
+        ("deny", "delete_*"),
+        ("deny", {"tool": "delete_*"}),
+        ("deny", ["delete_*", 1]),
+    ],
+)
+def test_policy_allow_and_deny_types_fail_closed(tmp_policy_file, field, value):
+    tmp_policy_file({"policy": {field: value}})
+
+    with pytest.raises(PolicyFileError, match=rf"policy\.{field}"):
+        _load_policy_file()
+
+
+@pytest.mark.parametrize("field", ["allow", "deny"])
+def test_unknown_policy_category_fails_closed(tmp_policy_file, field):
+    tmp_policy_file({"policy": {field: ["category:unknown-phase"]}})
+
+    with pytest.raises(PolicyFileError, match="unknown category 'unknown-phase'"):
+        _load_policy_file()
+
+
+def test_non_mapping_custom_persona_fails_closed(tmp_policy_file):
+    tmp_policy_file({"personas": {"custom": "readonly"}})
+
+    with pytest.raises(PolicyFileError, match=r"personas\.custom.*mapping"):
+        _load_policy_file()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("inherit", 123),
+        ("tools", "not-a-wildcard"),
+        ("tools", {"name": "fine_tune"}),
+        ("tools", ["fine_tune", 1]),
+    ],
+)
+def test_custom_persona_field_types_fail_closed(tmp_policy_file, field, value):
+    tmp_policy_file({"personas": {"custom": {field: value}}})
+
+    with pytest.raises(PolicyFileError, match=rf"personas\.custom\.{field}"):
+        _load_policy_file()
 
 
 def test_malformed_policy_file_fails_closed(tmp_policy_file):

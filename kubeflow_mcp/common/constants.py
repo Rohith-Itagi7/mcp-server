@@ -51,6 +51,20 @@ def is_infrastructure_error(result: Any) -> bool:
     return code in (ErrorCode.KUBERNETES_ERROR, ErrorCode.SDK_ERROR, ErrorCode.TIMEOUT)
 
 
+def record_tool_result(breaker: Any, result: Any, generation: int | None) -> bool:
+    """Record a tool outcome against the breaker generation that executed it."""
+    is_success = (
+        "error_code" not in result and "error" not in result if isinstance(result, dict) else True
+    )
+    if is_success:
+        breaker.record_success(generation)
+    elif is_infrastructure_error(result):
+        breaker.record_failure(generation)
+    else:
+        breaker.release(generation)
+    return is_success
+
+
 class JobStatus:
     """TrainJob status strings (Kubeflow Trainer SDK / CR conditions).
 
