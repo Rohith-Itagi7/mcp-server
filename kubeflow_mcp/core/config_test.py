@@ -185,14 +185,40 @@ def test_load_config_rejects_invalid_logging_format_from_environment(monkeypatch
             load_config()
 
 
-def test_load_config_ignores_non_mapping_yaml(tmp_path, caplog):
+@pytest.mark.parametrize(
+    ("contents", "message"),
+    [
+        ("server: [invalid", "Failed to load configuration file"),
+        ("- trainer\n- optimizer\n", "root must be a mapping"),
+        ("null\n", "root must be a mapping"),
+        ("~\n", "root must be a mapping"),
+    ],
+)
+def test_load_config_rejects_invalid_yaml_and_non_mapping_roots(tmp_path, contents, message):
     config_file = tmp_path / "config.yaml"
-    config_file.write_text("- trainer\n- optimizer\n")
+    config_file.write_text(contents)
+
+    with pytest.raises(ValueError, match=message):
+        load_config(config_path=config_file)
+
+
+def test_load_config_accepts_empty_yaml_file(tmp_path, monkeypatch):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("")
+    monkeypatch.delenv("KUBEFLOW_MCP_CLIENTS", raising=False)
+    monkeypatch.delenv("KUBEFLOW_MCP_PERSONA", raising=False)
 
     cfg = load_config(config_path=config_file)
 
     assert cfg.server.clients == ["trainer"]
-    assert "Config root must be a mapping" in caplog.text
+    assert cfg.server.persona == "readonly"
+
+
+def test_load_config_rejects_missing_explicit_config_file(tmp_path):
+    config_file = tmp_path / "missing.yaml"
+
+    with pytest.raises(FileNotFoundError, match="Configuration file not found"):
+        load_config(config_path=config_file)
 
 
 def test_find_config_file_prefers_project_local_config(tmp_path):
@@ -209,8 +235,6 @@ def test_find_config_file_prefers_project_local_config(tmp_path):
         assert _find_config_file() == local_config
 
 
-# TODO(test): test config_path that doesn't exist falls back to default search
-# TODO(test): test malformed YAML handled gracefully
 # TODO(test): test auth config env overrides (KUBEFLOW_MCP_AUTH_TOKEN, KUBEFLOW_MCP_JWKS_URI)
 # TODO(test): test OTEL_EXPORTER_OTLP_ENDPOINT env override
 # TODO(test): test KUBEFLOW_MCP_CONTROLLER_NAMESPACE env override

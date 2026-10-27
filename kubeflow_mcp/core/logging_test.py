@@ -14,6 +14,7 @@
 
 """Unit tests for structured logging redaction."""
 
+import io
 import json
 import logging
 import sys
@@ -284,7 +285,7 @@ class TestLogPathsRedactConsistently:
 
 
 class TestSetupLogging:
-    """Tests for logging format selection and validation."""
+    """Tests for logging format selection, validation, handlers, and log levels."""
 
     @pytest.fixture(autouse=True)
     def _restore_logger(self):
@@ -301,24 +302,35 @@ class TestSetupLogging:
         return stream[0].formatter
 
     @pytest.mark.parametrize(
-        ("format_value", "formatter_type"),
+        ("fmt", "formatter_cls"),
         [("json", StructuredFormatter), ("console", ConsoleFormatter)],
     )
-    def test_uses_supported_format(self, format_value, formatter_type):
-        root = setup_logging(format=format_value)
-
-        assert isinstance(self._stream_formatter(root), formatter_type)
+    def test_uses_requested_format(self, fmt, formatter_cls):
+        root = setup_logging(format=fmt)
+        assert isinstance(self._stream_formatter(root), formatter_cls)
 
     @pytest.mark.parametrize(
-        ("is_tty", "formatter_type"),
+        ("is_tty", "formatter_cls"),
         [(True, ConsoleFormatter), (False, StructuredFormatter)],
     )
-    def test_auto_detects_format_when_omitted(self, monkeypatch, is_tty, formatter_type):
-        monkeypatch.setattr(sys.stderr, "isatty", lambda: is_tty)
+    def test_auto_detects_format_from_terminal(self, monkeypatch, is_tty, formatter_cls):
+        class _Stream(io.StringIO):
+            def isatty(self) -> bool:
+                return is_tty
 
+        monkeypatch.setattr(sys, "stderr", _Stream())
         root = setup_logging()
+        assert isinstance(self._stream_formatter(root), formatter_cls)
 
-        assert isinstance(self._stream_formatter(root), formatter_type)
+    def test_sets_log_level(self):
+        root = setup_logging(level="debug", format="json")
+        assert root.level == logging.DEBUG
+
+    def test_calling_twice_does_not_duplicate_handlers(self):
+        setup_logging(format="json")
+        root = setup_logging(format="json")
+        assert len(root.handlers) == 2
+        assert sum(isinstance(h, BufferingHandler) for h in root.handlers) == 1
 
     def test_rejects_unsupported_format(self):
         with pytest.raises(ValueError, match="invalid.*json.*console"):

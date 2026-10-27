@@ -131,6 +131,8 @@ def serve(
         cfg = load_config()
     except ValidationError as exc:
         raise click.ClickException(f"Invalid configuration: {exc}") from None
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
 
     clients = clients or ",".join(cfg.server.clients)
     persona = persona or cfg.server.persona

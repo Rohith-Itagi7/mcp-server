@@ -187,26 +187,38 @@ def _find_config_file() -> Path | None:
 
 
 def _load_yaml_config(path: Path) -> dict[str, Any]:
-    """Load config from YAML file."""
+    """Load config from YAML file.
+
+    An empty YAML document is treated as an empty configuration. Invalid YAML,
+    unreadable files, and non-mapping roots raise an error so startup cannot
+    silently proceed with defaults when a selected file is broken.
+    """
     try:
         import yaml
+    except ImportError as exc:
+        raise RuntimeError("PyYAML is required to load a configuration file") from exc
 
-        with open(path) as f:
-            data = yaml.safe_load(f)
-            if data is None:
-                return {}
-            if not isinstance(data, dict):
-                logger.warning(
-                    "Config root must be a mapping; ignoring %s (got %s)", path, type(data).__name__
-                )
-                return {}
-            return data
-    except ImportError:
-        logger.warning("PyYAML not installed, skipping config file")
+    try:
+        with path.open(encoding="utf-8") as f:
+            content = f.read()
+        data = yaml.safe_load(content)
+        if data is None and yaml.compose(content) is not None:
+            raise ValueError(
+                f"Invalid configuration file '{path}': root must be a mapping, got NoneType"
+            )
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(f"Failed to load configuration file '{path}': {exc}") from exc
+
+    if data is None:
         return {}
-    except Exception as e:
-        logger.warning("Failed to load config from %s: %s", path, e)
-        return {}
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"Invalid configuration file '{path}': root must be a mapping, "
+            f"got {type(data).__name__}"
+        )
+    return data
 
 
 def load_config(config_path: Path | None = None) -> Config:
@@ -228,12 +240,15 @@ def load_config(config_path: Path | None = None) -> Config:
     file_config: dict[str, Any] = {}
 
     # Load from file
-    if config_path and config_path.exists():
-        file_config = _load_yaml_config(config_path)
-        logger.debug(f"Loaded config from {config_path}")
+    if config_path is not None:
+        if config_path.exists():
+            file_config = _load_yaml_config(config_path)
+            logger.debug(f"Loaded config from {config_path}")
+        else:
+            raise FileNotFoundError(f"Configuration file not found: {config_path}")
     else:
         default_path = _find_config_file()
-        if default_path:
+        if default_path is not None:
             file_config = _load_yaml_config(default_path)
             logger.debug(f"Loaded config from {default_path}")
 
