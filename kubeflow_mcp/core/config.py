@@ -236,7 +236,6 @@ def load_config(config_path: Path | None = None) -> Config:
     Returns:
         Merged configuration
     """
-    # Start with defaults
     file_config: dict[str, Any] = {}
 
     # Load from file
@@ -252,7 +251,6 @@ def load_config(config_path: Path | None = None) -> Config:
             file_config = _load_yaml_config(default_path)
             logger.debug(f"Loaded config from {default_path}")
 
-    # Build server config with env overrides
     server_file = file_config.get("server", {})
     raw_clients = os.getenv(
         "KUBEFLOW_MCP_CLIENTS",
@@ -278,7 +276,6 @@ def load_config(config_path: Path | None = None) -> Config:
         ),
     )
 
-    # Build logging config with env overrides
     logging_file = file_config.get("logging", {})
     logging_config = LoggingConfig(
         level=os.getenv("LOG_LEVEL", logging_file.get("level", "INFO")),
@@ -293,7 +290,6 @@ def load_config(config_path: Path | None = None) -> Config:
         )
     )
 
-    # Build client-specific configs
     trainer_file = file_config.get("trainer", {})
     trainer = TrainerConfig(
         default_runtime=trainer_file.get("default_runtime"),

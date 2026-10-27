@@ -214,11 +214,21 @@ def test_load_config_accepts_empty_yaml_file(tmp_path, monkeypatch):
     assert cfg.server.persona == "readonly"
 
 
+# TODO(test): test auth config env overrides (KUBEFLOW_MCP_AUTH_TOKEN, KUBEFLOW_MCP_JWKS_URI)
+# TODO(test): test OTEL env, controller namespace, and multiple clients
+
+
 def test_load_config_rejects_missing_explicit_config_file(tmp_path):
     config_file = tmp_path / "missing.yaml"
 
     with pytest.raises(FileNotFoundError, match="Configuration file not found"):
         load_config(config_path=config_file)
+
+
+def test_load_config_default_discovery_still_uses_defaults_if_no_file():
+    with patch("kubeflow_mcp.core.config._find_config_file", return_value=None):
+        cfg = load_config()
+    assert cfg.server.clients == ["trainer"]
 
 
 def test_find_config_file_prefers_project_local_config(tmp_path):
@@ -233,9 +243,3 @@ def test_find_config_file_prefers_project_local_config(tmp_path):
         patch("kubeflow_mcp.core.config.Path.cwd", return_value=tmp_path),
     ):
         assert _find_config_file() == local_config
-
-
-# TODO(test): test auth config env overrides (KUBEFLOW_MCP_AUTH_TOKEN, KUBEFLOW_MCP_JWKS_URI)
-# TODO(test): test OTEL_EXPORTER_OTLP_ENDPOINT env override
-# TODO(test): test KUBEFLOW_MCP_CONTROLLER_NAMESPACE env override
-# TODO(test): test multiple clients from KUBEFLOW_MCP_CLIENTS env var

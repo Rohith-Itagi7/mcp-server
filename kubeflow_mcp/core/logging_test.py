@@ -285,7 +285,7 @@ class TestLogPathsRedactConsistently:
 
 
 class TestSetupLogging:
-    """Tests for logging format selection, validation, handlers, and log levels."""
+    """Test format selection and validation, handler setup, and log levels."""
 
     @pytest.fixture(autouse=True)
     def _restore_logger(self):
