@@ -28,6 +28,7 @@ from fastmcp import Client
 from kubeflow_mcp import __version__, trainer
 from kubeflow_mcp.common.constants import TOOL_NEXT_HINTS, TOOL_TO_PHASE
 from kubeflow_mcp.common.types import PreviewResponse, ToolResponse
+from kubeflow_mcp.core.policy import get_effective_persona, set_effective_persona
 from kubeflow_mcp.core.server import _audit_wrap, _inject_meta, create_server
 from kubeflow_mcp.trainer import CLIENT_TOOL_ANNOTATIONS, CLIENT_TOOL_DESCRIPTIONS
 
@@ -236,10 +237,14 @@ class TestInjectMetaPreviewResponses:
 
 
 async def test_server_info_reports_package_version():
-    async with Client(create_server()) as client:
-        # The sessionless protocol has no initialize handshake; FastMCP exposes
-        # the server info it discovered on both protocol eras.
-        assert client.server_info.version == __version__
+    previous = get_effective_persona()
+    try:
+        async with Client(create_server()) as client:
+            # The sessionless protocol has no initialize handshake; FastMCP exposes
+            # the server info it discovered on both protocol eras.
+            assert client.server_info.version == __version__
+    finally:
+        set_effective_persona(previous)
 
 
 def test_audit_wrap_execute_tool_circuit_breaker_isolation(monkeypatch):
@@ -252,6 +257,7 @@ def test_audit_wrap_execute_tool_circuit_breaker_isolation(monkeypatch):
     def test_get_breaker(name):
         return breakers.setdefault(name, CircuitBreaker())
 
+    # Keep this test independent of breakers left behind by other tests.
     monkeypatch.setattr(server, "get_breaker", test_get_breaker)
     monkeypatch.setattr(dynamic_tools, "get_breaker", test_get_breaker)
 
@@ -274,14 +280,20 @@ def test_audit_wrap_execute_tool_circuit_breaker_isolation(monkeypatch):
     )
 
     for i in range(5):
-        result = audited_exec(tool_name=f"k8s_err_{i}")
-        assert result["error_code"] == ErrorCode.KUBERNETES_ERROR
+        res = audited_exec(tool_name=f"k8s_err_{i}")
+        assert res["error_code"] == ErrorCode.KUBERNETES_ERROR
         assert breakers[f"k8s_err_{i}"].state == CircuitState.CLOSED
         assert breakers[f"k8s_err_{i}"].failure_count == 1
 
+    # No shared breaker is even created for the execute_tool wrapper.
     assert "execute_tool" not in breakers
-    assert audited_exec(tool_name="healthy_worker") == {"status": "ok"}
 
+    # Healthy tool executes successfully through audited execute_tool
+    healthy_res = audited_exec(tool_name="healthy_worker")
+    assert healthy_res == {"status": "ok"}
+
+    # The bypass is specific to dynamic-mode execution, not any function
+    # that happens to have the same name.
     def execute_tool(tool_name):
         return {"status": "ok", "tool": tool_name}
 
@@ -302,16 +314,21 @@ def test_audit_wrap_preserves_dynamic_tool_meta(monkeypatch):
     monkeypatch.setitem(TOOL_NEXT_HINTS, "meta_worker", "View metrics")
 
     audited_exec = _audit_wrap(execute_tool, is_dynamic_execute_tool=True)
-    result = audited_exec(tool_name="meta_worker")
-    assert result["status"] == "ok"
-    assert result.get("_meta") == {"phase": "evaluation", "next": "View metrics"}
+    res = audited_exec(tool_name="meta_worker")
+    assert res["status"] == "ok"
+    assert res.get("_meta") == {"phase": "evaluation", "next": "View metrics"}
 
 
 async def test_progressive_mode_e2e_meta_and_breaker():
-    async with Client(create_server(mode="progressive")) as client:
-        result = await client.call_tool("execute_tool", {"tool_name": "health_check"})
-        assert result.structured_content["_meta"]["phase"] == "health"
-        assert "next" in result.structured_content["_meta"]
+    previous = get_effective_persona()
+    try:
+        async with Client(create_server(mode="progressive")) as client:
+            # execute_tool returns _meta workflow guidance in progressive mode
+            res = await client.call_tool("execute_tool", {"tool_name": "health_check"})
+            assert res.structured_content["_meta"]["phase"] == "health"
+            assert "next" in res.structured_content["_meta"]
+    finally:
+        set_effective_persona(previous)
 
 
 @pytest.mark.parametrize("mode", ["progressive", "semantic"])

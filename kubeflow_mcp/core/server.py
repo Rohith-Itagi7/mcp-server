@@ -168,6 +168,9 @@ def _audit_wrap(
         cid = with_correlation_id()
         start = time.monotonic()
 
+        # FastMCP already opens the SERVER span "tools/call <tool>" and parents it on
+        # the traceparent from the request _meta. This span is an INTERNAL child for
+        # the tool execution itself, so a call no longer shows two identical spans.
         span_kwargs: dict[str, Any] = {}
         if SpanKind is not None:
             span_kwargs["kind"] = SpanKind.INTERNAL
@@ -208,6 +211,9 @@ def _audit_wrap(
                     "error_code": ErrorCode.RATE_LIMITED,
                 }
 
+            # In dynamic modes, execute_tool delegates to target tools that manage
+            # their own per-tool circuit breakers. Bypass the outer breaker to prevent
+            # failures in one tool from tripping the circuit for unrelated tools.
             breaker = None if is_dynamic_execute_tool else get_breaker(tool_name)
             generation = breaker.acquire() if breaker is not None else None
             if breaker is not None and generation is None:
@@ -247,6 +253,8 @@ def _audit_wrap(
                         "duration_ms": duration_ms,
                     },
                 )
+                # In dynamic modes, execute_tool proxies calls to target tools.
+                # Inject metadata using the delegated tool's phase and next hints.
                 target_tool = (
                     kwargs["tool_name"]
                     if is_dynamic_execute_tool and isinstance(kwargs.get("tool_name"), str)

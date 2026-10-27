@@ -244,11 +244,11 @@ def test_tool_exception_still_counts_as_breaker_failure():
 def test_execute_tool_threads_generation_to_record_success(monkeypatch):
     breaker = get_breaker("probe_tool")
     recorded: list[int | None] = []
-    original = breaker.record_success
+    orig = breaker.record_success
 
     def spy_record_success(generation: int | None = None) -> None:
         recorded.append(generation)
-        original(generation)
+        orig(generation)
 
     monkeypatch.setattr(breaker, "record_success", spy_record_success)
     result = dynamic_tools.execute_tool("probe_tool", {"name": "ok"})
@@ -260,11 +260,11 @@ def test_execute_tool_threads_generation_to_record_success(monkeypatch):
 def test_execute_tool_threads_generation_to_record_failure(monkeypatch):
     breaker = get_breaker("failing_tool")
     recorded: list[int | None] = []
-    original = breaker.record_failure
+    orig = breaker.record_failure
 
     def spy_record_failure(generation: int | None = None) -> None:
         recorded.append(generation)
-        original(generation)
+        orig(generation)
 
     monkeypatch.setattr(breaker, "record_failure", spy_record_failure)
     result = dynamic_tools.execute_tool("failing_tool", {"name": "x"})

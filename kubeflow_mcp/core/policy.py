@@ -152,7 +152,10 @@ def _find_policy_file() -> Path | None:
 
 
 class PolicyFileError(RuntimeError):
-    """The policy file exists but cannot be used, so the server must not start."""
+    """The policy file exists but cannot be used, so the server must not start.
+
+    A ``RuntimeError`` so existing callers keep working; ``serve()`` catches it to print
+    the message without a traceback."""
 
 
 def _load_policy_file() -> dict[str, Any]:
@@ -190,7 +193,7 @@ def _shape_error(path: Path, key: str, expected: str, value: Any) -> PolicyFileE
 
 
 def _mapping_or_empty(value: Any, key: str, path: Path) -> dict[str, Any]:
-    """Return a mapping section; an empty YAML section means an empty mapping."""
+    """Return a mapping section; an empty YAML section (``None``) means an empty mapping."""
     if value is None:
         return {}
     if not isinstance(value, dict):
@@ -199,7 +202,11 @@ def _mapping_or_empty(value: Any, key: str, path: Path) -> dict[str, Any]:
 
 
 def _check_string_list(value: Any, key: str, path: Path) -> None:
-    """Require a list of strings."""
+    """Require a list of strings.
+
+    A lone string is the dangerous case: the readers iterate it one character at a
+    time, so ``deny: risk:destructive`` would deny nothing.
+    """
     if isinstance(value, str):
         raise PolicyFileError(
             f"Invalid policy file {path}: '{key}' must be a list of strings, got the single "
@@ -213,7 +220,7 @@ def _check_string_list(value: Any, key: str, path: Path) -> None:
 
 
 def _validate_categories(patterns: list[str], key: str, path: Path) -> None:
-    """Reject unknown category references before a policy can be applied."""
+    """Reject unknown ``category:`` references before a policy can be applied."""
     valid_categories = ", ".join(sorted(TOOL_PHASES))
     for pattern in patterns:
         if pattern.startswith("category:"):
@@ -226,7 +233,7 @@ def _validate_categories(patterns: list[str], key: str, path: Path) -> None:
 
 
 def _validate_policy_section(policy: dict[str, Any], path: Path) -> None:
-    """Check the policy mapping in place."""
+    """Check the ``policy:`` mapping in place."""
     for key in ("allow", "deny"):
         if key in policy:
             if policy[key] is None:
@@ -235,11 +242,13 @@ def _validate_policy_section(policy: dict[str, Any], path: Path) -> None:
                 _check_string_list(policy[key], f"policy.{key}", path)
                 _validate_categories(policy[key], f"policy.{key}", path)
 
+    # An empty ``namespaces:`` keeps meaning "no namespace restriction".
     if policy.get("namespaces") is not None:
         _check_string_list(policy["namespaces"], "policy.namespaces", path)
 
     read_only = policy.get("read_only")
     if read_only is not None and not isinstance(read_only, bool):
+        # bool("false") is True, so a quoted value would silently flip the setting.
         raise _shape_error(path, "policy.read_only", "true or false", read_only)
 
 
@@ -257,7 +266,13 @@ def _validate_personas_section(personas: dict[str, Any], path: Path) -> None:
 
 
 def _validate_policy_shape(data: Any, path: Path) -> dict[str, Any]:
-    """Check that a parsed policy file has the shape its readers rely on."""
+    """Check that a parsed policy file has the shape the readers below rely on.
+
+    ``yaml.safe_load`` accepts any document, and a value of the wrong type is misread
+    rather than rejected. Raise at load time instead, naming the file and the key, the
+    same way an unparseable file fails closed. Empty sections are normalized so the
+    readers never see ``None`` where they expect a mapping or a list.
+    """
     if data is None:
         return {}
     if not isinstance(data, dict):

@@ -164,7 +164,7 @@ def _execute_tool(
     args = arguments or {}
 
     # Reject bad arguments before touching the breaker: they are a caller mistake,
-    # and returning after can_execute() would also leak a half-open probe slot.
+    # and returning after acquire() would also leak a half-open probe slot.
     try:
         inspect.signature(func).bind(**args)
     except TypeError as e:
@@ -186,13 +186,14 @@ def _execute_tool(
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=Warning, module="urllib3")
             result = func(**args)
-        record_tool_result(breaker, result, generation)
-        if isinstance(result, dict):
-            return result
-        return {"result": result}
     except Exception as e:
         breaker.record_failure(generation)
         return {"error": str(e), "error_code": ErrorCode.SDK_ERROR, "tool": tool_name}
+
+    record_tool_result(breaker, result, generation)
+    if isinstance(result, dict):
+        return result
+    return {"result": result}
 
 
 # =============================================================================
